@@ -4,7 +4,7 @@ from keras.initializations import normal, identity
 from keras.models import model_from_json, load_model
 from keras.engine.training import collect_trainable_weights
 from keras.models import Sequential
-from keras.layers import Dense, Flatten, Input, merge, Lambda, Activation
+from keras.layers import Dense, Flatten, Input, merge, Lambda, Activation, Convolution2D, Permute
 from keras.models import Sequential, Model
 from keras.optimizers import Adam
 import keras.backend as K
@@ -45,10 +45,25 @@ class CriticNetwork(object):
     def create_critic_network(self, state_size,action_dim):
         print("Now we build the model")
         S = Input(shape=[state_size])  
-        A = Input(shape=[action_dim],name='action2')   
-        w1 = Dense(HIDDEN1_UNITS, activation='relu')(S)
+        A = Input(shape=[action_dim],name='action2')  
+        S = Input(shape=[state_size])  
+
+        l0 = Permute((1, 2, 3), input_shape=input_shape)(S)
+        w1 = Convolution2D(32, 8, 8, subsample=(4, 4))(l0)
+        l1 = Activation('relu')(w1)
+        w2 = Convolution2D(64, 4, 4, subsample=(2, 2))(l1)
+        l2 = Activation('relu')(w2)
+        w3 = Convolution2D(64, 3, 3, subsample=(1, 1))(l3)
+        l3 = Activation('relu')(w3)
+        l4 = Flatten()(l3)
+        h1 = Dense(HIDDEN2_UNITS)(l4)
+        # Activation('relu')
+        # Dense(action_dim)
+        # Activation('linear')
+        
+        # w1 = Dense(HIDDEN1_UNITS, activation='relu')(S)
         a1 = Dense(HIDDEN2_UNITS, activation='linear')(A) 
-        h1 = Dense(HIDDEN2_UNITS, activation='linear')(w1)
+        # h1 = Dense(HIDDEN2_UNITS, activation='linear')(w1)
         h2 = merge([h1,a1],mode='sum')    
         h3 = Dense(HIDDEN2_UNITS, activation='relu')(h2)
         V = Dense(action_dim,activation='linear')(h3)   
