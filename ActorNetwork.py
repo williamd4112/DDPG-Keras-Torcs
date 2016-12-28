@@ -45,13 +45,31 @@ class ActorNetwork(object):
 
     def create_actor_network(self, state_size,action_dim):
         print("Now we build the model")
-        S = Input(shape=[state_size])   
-        h0 = Dense(HIDDEN1_UNITS, activation='relu')(S)
-        h1 = Dense(HIDDEN2_UNITS, activation='relu')(h0)
-        Steering = Dense(1,activation='tanh',init=lambda shape, name: normal(shape, scale=1e-4, name=name))(h1)  
-        Acceleration = Dense(1,activation='sigmoid',init=lambda shape, name: normal(shape, scale=1e-4, name=name))(h1)   
-        Brake = Dense(1,activation='sigmoid',init=lambda shape, name: normal(shape, scale=1e-4, name=name))(h1) 
-        V = merge([Steering,Acceleration,Brake],mode='concat')          
-        model = Model(input=S,output=V)
+        # S = Input(shape=[state_size])   
+        # h0 = Dense(HIDDEN1_UNITS, activation='relu')(S)
+        # h1 = Dense(HIDDEN2_UNITS, activation='relu')(h0)
+        # Steering = Dense(1,activation='tanh',init=lambda shape, name: normal(shape, scale=1e-4, name=name))(h1)  
+        # Acceleration = Dense(1,activation='sigmoid',init=lambda shape, name: normal(shape, scale=1e-4, name=name))(h1)   
+        # Brake = Dense(1,activation='sigmoid',init=lambda shape, name: normal(shape, scale=1e-4, name=name))(h1) 
+        # V = merge([Steering,Acceleration,Brake],mode='concat')          
+        
+        S = Input(shape=[state_size])  
+        input_shape = [state_size]
+        model = Sequential()
+        model.add(Permute((1, 2, 3), input_shape=input_shape))
+        model.add(Convolution2D(32, 8, 8, subsample=(4, 4)))
+        model.add(Activation('relu'))
+        model.add(Convolution2D(64, 4, 4, subsample=(2, 2)))
+        model.add(Activation('relu'))
+        model.add(Convolution2D(64, 3, 3, subsample=(1, 1)))
+        model.add(Activation('relu'))
+        model.add(Flatten())
+        model.add(Dense(512))
+        model.add(Activation('relu'))
+        model.add(Dense(action_dim))
+        model.add(Activation('linear'))
+
+
+        # model = Model(input=S,output=V)
         return model, model.trainable_weights, S
 
