@@ -11,9 +11,10 @@ import time
 
 
 class TorcsEnv:
-    terminal_judge_start = 100  # If after 100 timestep still no progress, terminated
-    termination_limit_progress = 5  # [km/h], episode terminates if car is running slower than this limit
-    default_speed = 50
+    terminal_judge_start = 10  # If after 100 timestep still no progress, terminated
+    termination_limit_progress = 0  # [km/h], episode terminates if car is running slower than this limit
+    termination_stuck_limit = 30
+    default_speed = 300
 
     initial_reset = True
 
@@ -58,6 +59,8 @@ class TorcsEnv:
             high = np.array([1., np.inf, np.inf, np.inf, 1., np.inf, 1., np.inf, 255])
             low = np.array([0., -np.inf, -np.inf, -np.inf, 0., -np.inf, 0., -np.inf, 0])
             self.observation_space = spaces.Box(low=low, high=high)
+        self.stuck_cnt = 0
+        self.last_dist = 0
 
     def step(self, u):
        #print("Step")
@@ -133,13 +136,25 @@ class TorcsEnv:
         sp = np.array(obs['speedX'])
         damage = np.array(obs['damage'])
         rpm = np.array(obs['rpm'])
+        dist = np.array([obs['distRaced']])
 
-        progress = sp*np.cos(obs['angle']) - np.abs(sp*np.sin(obs['angle'])) - sp * np.abs(obs['trackPos'])
-        reward = progress
+        sp_baseline = sp / (1.0 + np.abs(obs['angle']))
+        progress = (sp_baseline) * (np.cos(obs['angle'])) - np.abs(sp_baseline*sp_baseline*np.sin(obs['angle'])) - sp_baseline * np.abs(obs['trackPos'])
+        #progress = sp * np.cos(obs['angle'])
+        #progress = sp * np.round(np.cos(obs['angle']))
+        reward = np.log(1.0 + np.max([progress, 0]))
+        if dist - self.last_dist < 0.7:
+            self.stuck_cnt += 1
+        else:
+            self.stuck_cnt = 0
+        stuck = True if self.stuck_cnt > 50 else False
+        self.last_dist = dist
 
         # collision detection
-        if obs['damage'] - obs_pre['damage'] > 0:
-            reward = -1
+        if obs['damage']:
+            reward = 0
+            episode_terminate = True
+            client.R.d['meta'] = True
 
         # Termination judgement #########################
         episode_terminate = False
@@ -148,14 +163,15 @@ class TorcsEnv:
         #    episode_terminate = True
         #    client.R.d['meta'] = True
 
-        #if self.terminal_judge_start < self.time_step: # Episode terminates if the progress of agent is small
-        #    if progress < self.termination_limit_progress:
-        #        print("No progress")
-        #        episode_terminate = True
-        #        client.R.d['meta'] = True
+        if self.terminal_judge_start < self.time_step: # Episode terminates if the progress of agent is small
+            if stuck:
+                print("No progress")
+                episode_terminate = True
+                client.R.d['meta'] = True
 
         if np.cos(obs['angle']) < 0: # Episode is terminated if the agent runs backward
             episode_terminate = True
+            #reward = -abs(reward)
             client.R.d['meta'] = True
 
 
@@ -171,6 +187,8 @@ class TorcsEnv:
         #print("Reset")
 
         self.time_step = 0
+        self.stuck_cnt = 0
+        self.last_dist = 0
 
         if self.initial_reset is not True:
             self.client.R.d['meta'] = True
@@ -237,7 +255,7 @@ class TorcsEnv:
         r = np.array(r).reshape(sz)
         g = np.array(g).reshape(sz)
         b = np.array(b).reshape(sz)
-        return np.array([r, g, b], dtype=np.uint8)
+        return np.array([r, g, b], dtype=np.uint8).reshape(64, 64, 3)
 
     def make_observaton(self, raw_obs):
         if self.vision is False:
@@ -245,7 +263,7 @@ class TorcsEnv:
                      'speedX', 'speedY', 'speedZ', 'angle', 'damage',
                      'opponents',
                      'rpm',
-                     'track', 
+                     'track',
                      'trackPos',
                      'wheelSpinVel']
             Observation = col.namedtuple('Observaion', names)
@@ -262,7 +280,7 @@ class TorcsEnv:
                                wheelSpinVel=np.array(raw_obs['wheelSpinVel'], dtype=np.float32))
         else:
             names = ['focus',
-                     'speedX', 'speedY', 'speedZ', 'angle',
+                     'speedX', 'speedY', 'speedZ', 'angle', 'damage',
                      'opponents',
                      'rpm',
                      'track',
@@ -270,16 +288,17 @@ class TorcsEnv:
                      'wheelSpinVel',
                      'img']
             Observation = col.namedtuple('Observaion', names)
-
-            # Get RGB from observation
-            image_rgb = self.obs_vision_to_image_rgb(raw_obs[names[8]])
+             # Get RGB from observation
+            image_rgb = self.obs_vision_to_image_rgb(raw_obs['img'])
 
             return Observation(focus=np.array(raw_obs['focus'], dtype=np.float32)/200.,
-                               speedX=np.array(raw_obs['speedX'], dtype=np.float32)/self.default_speed,
-                               speedY=np.array(raw_obs['speedY'], dtype=np.float32)/self.default_speed,
-                               speedZ=np.array(raw_obs['speedZ'], dtype=np.float32)/self.default_speed,
+                               speedX=np.array(raw_obs['speedX'], dtype=np.float32)/300.0,
+                               speedY=np.array(raw_obs['speedY'], dtype=np.float32)/300.0,
+                               speedZ=np.array(raw_obs['speedZ'], dtype=np.float32)/300.0,
+                               angle=np.array(raw_obs['angle'], dtype=np.float32)/3.1416,
+                               damage=np.array(raw_obs['damage'], dtype=np.float32),
                                opponents=np.array(raw_obs['opponents'], dtype=np.float32)/200.,
-                               rpm=np.array(raw_obs['rpm'], dtype=np.float32),
+                               rpm=np.array(raw_obs['rpm'], dtype=np.float32)/10000,
                                track=np.array(raw_obs['track'], dtype=np.float32)/200.,
                                trackPos=np.array(raw_obs['trackPos'], dtype=np.float32)/1.,
                                wheelSpinVel=np.array(raw_obs['wheelSpinVel'], dtype=np.float32),

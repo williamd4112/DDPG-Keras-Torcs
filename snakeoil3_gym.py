@@ -329,7 +329,7 @@ class ServerState(object):
         #'gear',
         u'distRaced',
         u'distFromStart',
-        #'racePos',
+        u'racePos',
         u'opponents',
         u'wheelSpinVel',
         u'z',
